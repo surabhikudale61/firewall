@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Firewall Simulator Pro</title>
+    <style>
+        :root {
+            --bg: #1a1a2e;
+            --card: #16213e;
+            --text: #e94560;
+            --allow: #4caf50;
+            --deny: #f44336;
+            --accent: #0f3460;
+        }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: #fff; margin: 20px; }
+        .main-layout { display: grid; grid-template-columns: 320px 1fr 320px; gap: 20px; }
+        .card { background: var(--card); padding: 15px; border-radius: 8px; border: 1px solid #30475e; margin-bottom: 20px; }
+        h2 { border-bottom: 2px solid var(--text); padding-bottom: 10px; margin-top: 0; font-size: 1.2rem; }
+        
+        /* Form & Button Styling */
+        input, select, button { padding: 10px; margin: 5px 0; border-radius: 4px; border: none; width: 100%; box-sizing: border-box; }
+        button { background: var(--text); color: white; font-weight: bold; cursor: pointer; }
+        button:hover { opacity: 0.8; }
+        .btn-start { background: var(--allow); }
+        .btn-pause { background: #f39c12; }
+        .btn-reset { background: #7f8c8d; }
+        .btn-test { background: #3498db; margin-top: 10px; }
+
+        /* Traffic & Alerts Styling */
+        .scroll-container { height: 300px; overflow-y: auto; background: #0f3460; border-radius: 4px; font-family: monospace; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+        th { position: sticky; top: 0; background: #0f3460; text-align: left; padding: 10px; border-bottom: 1px solid #30475e; }
+        td { padding: 8px 10px; border-bottom: 1px solid #1a1a2e; }
+        
+        .alert-entry { padding: 8px; border-bottom: 1px solid #c0392b; background: rgba(244, 67, 54, 0.1); font-size: 0.8em; }
+        .status-allow { color: var(--allow); font-weight: bold; }
+        .status-deny { color: var(--deny); font-weight: bold; }
+
+        #inspector { border: 2px dashed var(--text); background: #000; padding: 15px; }
+        .packet-row { cursor: pointer; }
+        .packet-row:hover { background: rgba(255, 255, 255, 0.1); }
+    </style>
+</head>
+<body>
+
+    <h1>Firewall Simulator: Security Operations Center</h1>
+
+    <div class="main-layout">
+        <div class="col">
+            <div class="card">
+                <h2>Simulation Controls</h2>
+                <div style="display: flex; gap: 5px;">
+                    <button class="btn-start" onclick="startSim()">Start</button>
+                    <button class="btn-pause" onclick="pauseSim()">Pause</button>
+                    <button class="btn-reset" onclick="resetSim()">Reset</button>
+                </div>
+                <p id="sim-status" style="font-size: 0.8em; text-align: center; color: var(--allow);">System: Ready</p>
+            </div>
+
+            <div class="card">
+                <h2>Policy Configuration</h2>
+                <input type="text" id="rule-ip" placeholder="Target IP (e.g., 192.168.1.5)">
+                <select id="rule-action">
+                    <option value="ALLOW">ALLOW</option>
+                    <option value="DENY">BLOCK / DENY</option>
+                </select>
+                <button onclick="addRule()">Update Policy</button>
+                
+                <h3 style="font-size: 0.9em; margin-top: 15px;">Active Rules:</h3>
+                <ul id="rule-list" style="list-style: none; padding: 0; font-size: 0.85em;"></ul>
+            </div>
+
+            <div class="card">
+                <h2>Run Manual Test</h2>
+                <input type="text" id="test-ip" placeholder="IP to Test...">
+                <button class="btn-test" onclick="runManualTest()">Inject Packet</button>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card">
+                <h2>Live Traffic Stream</h2>
+                <div class="scroll-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Source IP</th>
+                                <th>Target</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="traffic-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="inspector" class="card">
+                <h2>Packet Inspector</h2>
+                <div id="inspector-content">
+                    <p style="color: #777;">Click a packet from the stream to analyze details...</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card">
+                <h2>Intrusion Alerts</h2>
+                <div class="scroll-container" id="alert-list">
+                    <p style="padding: 10px; color: #777; font-size: 0.8em;">No threats detected.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let rules = [];
+        let trafficLog = [];
+        let simRunning = false;
+        let simTimer = null;
+
+        // --- SIMULATION CONTROLS ---
+        function startSim() {
+            if (!simRunning) {
+                simRunning = true;
+                document.getElementById('sim-status').innerText = "System: Live";
+                document.getElementById('sim-status').style.color = "var(--allow)";
+                simTimer = setInterval(generateTraffic, 2000);
+            }
+        }
+
+        function pauseSim() {
+            simRunning = false;
+            clearInterval(simTimer);
+            document.getElementById('sim-status').innerText = "System: Paused";
+            document.getElementById('sim-status').style.color = "orange";
+        }
+
+        function resetSim() {
+            pauseSim();
+            rules = [];
+            trafficLog = [];
+            document.getElementById('traffic-body').innerHTML = '';
+            document.getElementById('alert-list').innerHTML = '<p style="padding:10px; color:#777; font-size:0.8em;">No threats detected.</p>';
+            document.getElementById('rule-list').innerHTML = '';
+            document.getElementById('inspector-content').innerHTML = '<p style="color: #777;">System Reset.</p>';
+            document.getElementById('sim-status').innerText = "System: Ready";
+        }
+
+        // --- POLICY RULES ---
+        function addRule() {
+            const ip = document.getElementById('rule-ip').value;
+            const action = document.getElementById('rule-action').value;
+            if (!ip) return alert("Enter IP");
+
+            rules.push({ ip, action });
+            const list = document.getElementById('rule-list');
+            const li = document.createElement('li');
+            li.innerHTML = `• <b>${action}</b>: ${ip}`;
+            li.style.color = action === 'ALLOW' ? 'var(--allow)' : 'var(--deny)';
+            list.appendChild(li);
+            document.getElementById('rule-ip').value = '';
+        }
+
+        // --- TRAFFIC ENGINE ---
+        function generateTraffic(manualIp = null) {
+            const ips = ['192.168.1.1', '10.0.0.5', '172.16.0.1', '8.8.8.8', '192.168.1.5', '45.77.12.1'];
+            const sourceIp = manualIp || ips[Math.floor(Math.random() * ips.length)];
+            
+            // SECURITY LOGIC: DENY BY DEFAULT
+            let status = 'DENY';
+            let blockReason = 'No matching Allow rule (Default Deny)';
+            
+            const matchedRule = rules.find(r => r.ip === sourceIp);
+            if (matchedRule) {
+                status = matchedRule.action;
+                blockReason = status === 'DENY' ? 'Source IP manually blacklisted' : 'Explicit Allow Policy';
+            }
+
+            const packet = {
+                id: Math.floor(Math.random() * 100000),
+                sourceIp,
+                target: 'Internal_Server_01',
+                status,
+                reason: blockReason,
+                timestamp: new Date().toLocaleTimeString(),
+                protocol: 'TCP/443'
+            };
+
+            trafficLog.unshift(packet);
+            if (trafficLog.length > 20) trafficLog.pop();
+
+            if (status === 'DENY') triggerAlert(packet);
+            updateTrafficUI();
+        }
+
+        function runManualTest() {
+            const testIp = document.getElementById('test-ip').value;
+            if (!testIp) return alert("Enter an IP to test");
+            generateTraffic(testIp);
+            document.getElementById('test-ip').value = '';
+        }
+
+        // --- UI UPDATES ---
+        function updateTrafficUI() {
+            const tbody = document.getElementById('traffic-body');
+            tbody.innerHTML = trafficLog.map(p => `
+                <tr class="packet-row" onclick="inspectPacket(${p.id})">
+                    <td>${p.sourceIp}</td>
+                    <td>${p.target}</td>
+                    <td class="${p.status === 'ALLOW' ? 'status-allow' : 'status-deny'}">${p.status}</td>
+                </tr>
+            `).join('');
+        }
+
+        function triggerAlert(p) {
+            const alertList = document.getElementById('alert-list');
+            // Remove placeholder on first alert
+            if (alertList.innerHTML.includes("No threats detected")) alertList.innerHTML = '';
+            
+            const div = document.createElement('div');
+            div.className = 'alert-entry';
+            div.innerHTML = `<strong>[BLOCKED]</strong> ${p.sourceIp}<br><small>Reason: ${p.reason}</small>`;
+            alertList.prepend(div);
+        }
+
+        function inspectPacket(id) {
+            const p = trafficLog.find(pkt => pkt.id === id);
+            const content = document.getElementById('inspector-content');
+            content.innerHTML = `
+                <div style="font-size: 0.9em;">
+                    <p><strong>Packet ID:</strong> ${p.id}</p>
+                    <p><strong>Timestamp:</strong> ${p.timestamp}</p>
+                    <p><strong>Source:</strong> ${p.sourceIp}</p>
+                    <p><strong>Status:</strong> <span class="${p.status === 'ALLOW' ? 'status-allow' : 'status-deny'}">${p.status}</span></p>
+                    <hr style="border:0; border-top:1px solid #333">
+                    <p><strong>Resolution Reason:</strong><br>${p.reason}</p>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
