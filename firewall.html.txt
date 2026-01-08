@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Firewall Simulator Pro</title>
+    <style>
+        :root {
+            --bg: #1a1a2e;
+            --card: #16213e;
+            --text: #e94560;
+            --allow: #4caf50;
+            --deny: #f44336;
+            --accent: #0f3460;
+        }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: #fff; margin: 20px; }
+        .main-layout { display: grid; grid-template-columns: 320px 1fr 320px; gap: 20px; }
+        .card { background: var(--card); padding: 15px; border-radius: 8px; border: 1px solid #30475e; margin-bottom: 20px; }
+        h2 { border-bottom: 2px solid var(--text); padding-bottom: 10px; margin-top: 0; font-size: 1.2rem; }
+        
+        /* Form & Button Styling */
+        input, select, button { padding: 10px; margin: 5px 0; border-radius: 4px; border: none; width: 100%; box-sizing: border-box; }
+        button { background: var(--text); color: white; font-weight: bold; cursor: pointer; }
+        button:hover { opacity: 0.8; }
+        .btn-start { background: var(--allow); }
+        .btn-pause { background: #f39c12; }
+        .btn-reset { background: #7f8c8d; }
+        .btn-test { background: #3498db; margin-top: 10px; }
+
+        /* Traffic & Alerts Styling */
+        .scroll-container { height: 300px; overflow-y: auto; background: #0f3460; border-radius: 4px; font-family: monospace; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+        th { position: sticky; top: 0; background: #0f3460; text-align: left; padding: 10px; border-bottom: 1px solid #30475e; }
+        td { padding: 8px 10px; border-bottom: 1px solid #1a1a2e; }
+        
+        .alert-entry { padding: 8px; border-bottom: 1px solid #c0392b; background: rgba(244, 67, 54, 0.1); font-size: 0.8em; animation: slideIn 0.3s ease; }
+        .status-allow { color: var(--allow); font-weight: bold; }
+        .status-deny { color: var(--deny); font-weight: bold; }
+
+        #inspector { border: 2px dashed var(--text); background: #000; padding: 15px; }
+        .packet-row { cursor: pointer; transition: background 0.2s; }
+        .packet-row:hover { background: rgba(255, 255, 255, 0.1); }
+        .packet-row.new-entry { animation: highlight 1s ease; }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        @keyframes highlight {
+            0%, 100% { background: rgba(255, 255, 255, 0.05); }
+            50% { background: rgba(233, 69, 96, 0.3); }
+        }
+
+        .stats-bar { display: flex; gap: 15px; margin-bottom: 20px; }
+        .stat-box { flex: 1; background: var(--card); padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #30475e; }
+        .stat-value { font-size: 2em; font-weight: bold; }
+        .stat-label { font-size: 0.85em; color: #aaa; margin-top: 5px; }
+        .stat-box.allow .stat-value { color: var(--allow); }
+        .stat-box.deny .stat-value { color: var(--deny); }
+        .stat-box.total .stat-value { color: #3498db; }
+
+        .live-indicator { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--allow); animation: pulse 1.5s infinite; margin-right: 8px; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+
+        @media (max-width: 1200px) {
+            .main-layout { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Firewall Simulator: Security Operations Center</h1>
+
+    <div class="stats-bar">
+        <div class="stat-box total">
+            <div class="stat-value" id="stat-total">0</div>
+            <div class="stat-label">Total Packets</div>
+        </div>
+        <div class="stat-box allow">
+            <div class="stat-value" id="stat-allowed">0</div>
+            <div class="stat-label">Allowed</div>
+        </div>
+        <div class="stat-box deny">
+            <div class="stat-value" id="stat-blocked">0</div>
+            <div class="stat-label">Blocked</div>
+        </div>
+    </div>
+
+    <div class="main-layout">
+        <div class="col">
+            <div class="card">
+                <h2>Simulation Controls</h2>
+                <div style="display: flex; gap: 5px;">
+                    <button class="btn-start" onclick="startSim()">Start</button>
+                    <button class="btn-pause" onclick="pauseSim()">Pause</button>
+                    <button class="btn-reset" onclick="resetSim()">Reset</button>
+                </div>
+                <p id="sim-status" style="font-size: 0.8em; text-align: center; color: var(--allow); margin-top: 10px;">System: Ready</p>
+            </div>
+
+            <div class="card">
+                <h2>Policy Configuration</h2>
+                <input type="text" id="rule-ip" placeholder="Target IP (e.g., 192.168.1.5)">
+                <select id="rule-action">
+                    <option value="ALLOW">ALLOW</option>
+                    <option value="DENY">BLOCK / DENY</option>
+                </select>
+                <button onclick="addRule()">Update Policy</button>
+                
+                <h3 style="font-size: 0.9em; margin-top: 15px;">Active Rules:</h3>
+                <ul id="rule-list" style="list-style: none; padding: 0; font-size: 0.85em;"></ul>
+            </div>
+
+            <div class="card">
+                <h2>Run Manual Test</h2>
+                <input type="text" id="test-ip" placeholder="IP to Test...">
+                <button class="btn-test" onclick="runManualTest()">Inject Packet</button>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card">
+                <h2><span class="live-indicator" id="live-dot" style="display:none;"></span>Live Traffic Stream</h2>
+                <div class="scroll-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Source IP</th>
+                                <th>Target</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="traffic-body">
+                            <tr><td colspan="4" style="text-align:center; color:#777; padding:20px;">No traffic yet. Click Start to begin monitoring.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="inspector" class="card">
+                <h2>Packet Inspector</h2>
+                <div id="inspector-content">
+                    <p style="color: #777;">Click a packet from the stream to analyze details...</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card">
+                <h2>Intrusion Alerts</h2>
+                <div class="scroll-container" id="alert-list">
+                    <p style="padding: 10px; color: #777; font-size: 0.8em;">No threats detected.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let rules = [];
+        let trafficLog = [];
+        let simRunning = false;
+        let simTimer = null;
+        let stats = { total: 0, allowed: 0, blocked: 0 };
+
+        // --- SIMULATION CONTROLS ---
+        function startSim() {
+            if (!simRunning) {
+                simRunning = true;
+                document.getElementById('sim-status').innerHTML = '<span class="live-indicator"></span>System: Live';
+                document.getElementById('sim-status').style.color = "var(--allow)";
+                document.getElementById('live-dot').style.display = 'inline-block';
+                
+                // Generate initial traffic immediately
+                generateTraffic();
+                
+                // Then continue generating at intervals
+                simTimer = setInterval(() => {
+                    generateTraffic();
+                }, 1500); // Generate new traffic every 1.5 seconds
+            }
+        }
+
+        function pauseSim() {
+            simRunning = false;
+            clearInterval(simTimer);
+            document.getElementById('sim-status').innerText = "System: Paused";
+            document.getElementById('sim-status').style.color = "orange";
+            document.getElementById('live-dot').style.display = 'none';
+        }
+
+        function resetSim() {
+            pauseSim();
+            rules = [];
+            trafficLog = [];
+            stats = { total: 0, allowed: 0, blocked: 0 };
+            updateStats();
+            document.getElementById('traffic-body').innerHTML = '';
+            document.getElementById('alert-list').innerHTML = '<p style="padding:10px; color:#777; font-size:0.8em;">No threats detected.</p>';
+            document.getElementById('rule-list').innerHTML = '';
+            document.getElementById('inspector-content').innerHTML = '<p style="color: #777;">System Reset.</p>';
+            document.getElementById('sim-status').innerText = "System: Ready";
+        }
+
+        // --- POLICY RULES ---
+        function addRule() {
+            const ip = document.getElementById('rule-ip').value;
+            const action = document.getElementById('rule-action').value;
+            if (!ip) return alert("Enter IP");
+
+            // Check if rule already exists
+            const existingIndex = rules.findIndex(r => r.ip === ip);
+            if (existingIndex !== -1) {
+                rules[existingIndex].action = action;
+            } else {
+                rules.push({ ip, action });
+            }
+            
+            updateRuleList();
+            document.getElementById('rule-ip').value = '';
+        }
+
+        function updateRuleList() {
+            const list = document.getElementById('rule-list');
+            list.innerHTML = rules.map((rule, index) => `
+                <li style="color: ${rule.action === 'ALLOW' ? 'var(--allow)' : 'var(--deny)'}; margin-bottom: 5px;">
+                    • <b>${rule.action}</b>: ${rule.ip}
+                    <button onclick="deleteRule(${index})" style="float: right; padding: 2px 8px; font-size: 0.8em; background: #7f8c8d;">×</button>
+                </li>
+            `).join('');
+        }
+
+        function deleteRule(index) {
+            rules.splice(index, 1);
+            updateRuleList();
+        }
+
+        // --- TRAFFIC ENGINE ---
+        function generateTraffic(manualIp = null) {
+            const ips = [
+                '192.168.1.1', '192.168.1.5', '192.168.1.25', '192.168.1.100',
+                '10.0.0.5', '10.0.0.12', '10.0.0.50',
+                '172.16.0.1', '172.16.0.10',
+                '8.8.8.8', '1.1.1.1',
+                '45.77.12.1', '185.220.101.5', '203.0.113.42'
+            ];
+            const sourceIp = manualIp || ips[Math.floor(Math.random() * ips.length)];
+            const ports = [80, 443, 22, 21, 3389, 8080, 3306, 5432, 25, 53];
+            const port = ports[Math.floor(Math.random() * ports.length)];
+            
+            // SECURITY LOGIC: Check rules first
+            let status = 'DENY';
+            let blockReason = 'No matching Allow rule (Default Deny)';
+            
+            const matchedRule = rules.find(r => r.ip === sourceIp);
+            if (matchedRule) {
+                status = matchedRule.action;
+                blockReason = status === 'DENY' ? 'Source IP manually blacklisted' : 'Explicit Allow Policy';
+            } else {
+                // If no rule matches, allow trusted IPs and common safe ports
+                const trustedIPs = ['192.168.1.1', '8.8.8.8', '1.1.1.1', '10.0.0.5'];
+                const safePorts = [80, 443, 53];
+                
+                if (trustedIPs.includes(sourceIp) || safePorts.includes(port)) {
+                    status = 'ALLOW';
+                    blockReason = 'Trusted source or safe port (Auto-allowed)';
+                }
+            }
+
+            const packet = {
+                id: Math.floor(Math.random() * 1000000),
+                sourceIp,
+                target: 'Internal_Server_01',
+                port: port,
+                status,
+                reason: blockReason,
+                timestamp: new Date().toLocaleTimeString(),
+                protocol: ['TCP', 'UDP'][Math.floor(Math.random() * 2)]
+            };
+
+            trafficLog.unshift(packet);
+            if (trafficLog.length > 50) trafficLog.pop();
+
+            // Update statistics
+            stats.total++;
+            if (status === 'ALLOW') {
+                stats.allowed++;
+            } else {
+                stats.blocked++;
+            }
+            updateStats();
+
+            if (status === 'DENY') triggerAlert(packet);
+            updateTrafficUI();
+        }
+
+        function runManualTest() {
+            const testIp = document.getElementById('test-ip').value;
+            if (!testIp) return alert("Enter an IP to test");
+            generateTraffic(testIp);
+            document.getElementById('test-ip').value = '';
+        }
+
+        // --- UI UPDATES ---
+        function updateStats() {
+            document.getElementById('stat-total').textContent = stats.total;
+            document.getElementById('stat-allowed').textContent = stats.allowed;
+            document.getElementById('stat-blocked').textContent = stats.blocked;
+        }
+
+        function updateTrafficUI() {
+            const tbody = document.getElementById('traffic-body');
+            
+            // Clear placeholder if exists
+            if (!tbody.innerHTML || tbody.innerHTML.includes('No traffic')) {
+                tbody.innerHTML = '';
+            }
+            
+            tbody.innerHTML = trafficLog.map((p, index) => `
+                <tr class="packet-row ${index === 0 ? 'new-entry' : ''}" onclick="inspectPacket(${p.id})">
+                    <td>${p.timestamp}</td>
+                    <td>${p.sourceIp}</td>
+                    <td>${p.target}:${p.port}</td>
+                    <td class="${p.status === 'ALLOW' ? 'status-allow' : 'status-deny'}">${p.status}</td>
+                </tr>
+            `).join('');
+            
+            console.log('Traffic updated:', trafficLog.length, 'packets'); // Debug log
+        }
+
+        function triggerAlert(p) {
+            const alertList = document.getElementById('alert-list');
+            // Remove placeholder on first alert
+            if (alertList.innerHTML.includes("No threats detected")) alertList.innerHTML = '';
+            
+            const div = document.createElement('div');
+            div.className = 'alert-entry';
+            div.innerHTML = `<strong>[BLOCKED] ${p.timestamp}</strong><br>${p.sourceIp} → ${p.target}:${p.port}<br><small>Reason: ${p.reason}</small>`;
+            alertList.prepend(div);
+
+            // Keep only last 30 alerts
+            while (alertList.children.length > 30) {
+                alertList.removeChild(alertList.lastChild);
+            }
+        }
+
+        function inspectPacket(id) {
+            const p = trafficLog.find(pkt => pkt.id === id);
+            if (!p) return;
+            
+            const content = document.getElementById('inspector-content');
+            content.innerHTML = `
+                <div style="font-size: 0.9em;">
+                    <p><strong>Packet ID:</strong> ${p.id}</p>
+                    <p><strong>Timestamp:</strong> ${p.timestamp}</p>
+                    <p><strong>Source IP:</strong> ${p.sourceIp}</p>
+                    <p><strong>Destination:</strong> ${p.target}:${p.port}</p>
+                    <p><strong>Protocol:</strong> ${p.protocol}</p>
+                    <p><strong>Status:</strong> <span class="${p.status === 'ALLOW' ? 'status-allow' : 'status-deny'}">${p.status}</span></p>
+                    <hr style="border:0; border-top:1px solid #333; margin: 10px 0;">
+                    <p><strong>Resolution Reason:</strong><br>${p.reason}</p>
+                </div>
+            `;
+        }
+
+        // Initialize with some default rules
+        rules.push({ ip: '8.8.8.8', action: 'ALLOW' });
+        rules.push({ ip: '192.168.1.1', action: 'ALLOW' });
+        rules.push({ ip: '1.1.1.1', action: 'ALLOW' });
+        rules.push({ ip: '10.0.0.5', action: 'ALLOW' });
+        updateRuleList();
+        updateStats();
+    </script>
+</body>
+</html>
